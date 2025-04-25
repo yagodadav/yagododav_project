@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pathfinding with A* Algorithm</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        .grid {
+            display: grid;
+            gap: 1px;
+            background-color: #ddd;
+            margin-top: 20px;
+        }
+        .cell {
+            width: 30px;
+            height: 30px;
+            background-color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        .obstacle {
+            background-color: #333;
+        }
+        .start {
+            background-color: #4CAF50;
+        }
+        .end {
+            background-color: #F44336;
+        }
+        .path {
+            background-color: #2196F3;
+        }
+        .visited {
+            background-color: #FFEB3B;
+        }
+    </style>
+</head>
+<body>
+    <h1>Pathfinding with A* Algorithm</h1>
+    
+    <div class="controls">
+        <label for="gridSize">Grid Size (n):</label>
+        <input type="number" id="gridSize" min="3" max="20" value="10">
+        <button id="generateGrid">Generate Grid</button>
+        <br><br>
+        <button id="findPath">Find Path</button>
+        <button id="clearPath">Clear Path</button>
+        <div>
+            <p>Click to place: 
+                <button id="setStart">Start</button>
+                <button id="setEnd">End</button>
+                <button id="setObstacle">Obstacle</button>
+                <button id="clearCell">Clear Cell</button>
+            </p>
+        </div>
+    </div>
+    
+    <div id="gridContainer"></div>
+    <div id="result"></div>
+
+    <script>
+        // Game state
+        let grid = [];
+        let gridSize = 10;
+        let startPos = null;
+        let endPos = null;
+        let currentMode = 'obstacle'; // 'start', 'end', 'obstacle', 'clear'
+        
+        // DOM elements
+        const gridContainer = document.getElementById('gridContainer');
+        const gridSizeInput = document.getElementById('gridSize');
+        const generateGridBtn = document.getElementById('generateGrid');
+        const findPathBtn = document.getElementById('findPath');
+        const clearPathBtn = document.getElementById('clearPath');
+        const setStartBtn = document.getElementById('setStart');
+        const setEndBtn = document.getElementById('setEnd');
+        const setObstacleBtn = document.getElementById('setObstacle');
+        const clearCellBtn = document.getElementById('clearCell');
+        const resultDiv = document.getElementById('result');
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            generateGrid(gridSize);
+            
+            // Event listeners
+            generateGridBtn.addEventListener('click', () => {
+                gridSize = parseInt(gridSizeInput.value);
+                generateGrid(gridSize);
+            });
+            
+            findPathBtn.addEventListener('click', findPath);
+            clearPathBtn.addEventListener('click', clearPath);
+            
+            setStartBtn.addEventListener('click', () => currentMode = 'start');
+            setEndBtn.addEventListener('click', () => currentMode = 'end');
+            setObstacleBtn.addEventListener('click', () => currentMode = 'obstacle');
+            clearCellBtn.addEventListener('click', () => currentMode = 'clear');
+        });
+        
+        // Generate a new grid
+        function generateGrid(size) {
+            grid = [];
+            gridContainer.innerHTML = '';
+            startPos = null;
+            endPos = null;
+            
+            // Create grid CSS
+            gridContainer.style.gridTemplateColumns = repeat({size}, 30);
+            
+            // Create grid data structure and DOM elements
+            for (let y = 0; y < size; y++) {
+                const row = [];
+                for (let x = 0; x < size; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    
+                    cell.addEventListener('click', () => handleCellClick(x, y));
+                    
+                    gridContainer.appendChild(cell);
+                    row.push({
+                        x, y,
+                        isObstacle: false,
+                        element: cell
+                    });
+                }
+                grid.push(row);
+            }
+        }
+        
+        // Handle cell clicks
+        function handleCellClick(x, y) {
+            const cell = grid[y][x];
+            
+            switch (currentMode) {
+                case 'start':
+                    // Clear previous start
+                    if (startPos) {
+                        const prevStart = grid[startPos.y][startPos.x];
+                        prevStart.element.classList.remove('start');
+                    }
+                    
+                    // Set new start (if not obstacle or end)
+                    if (!cell.isObstacle && !(endPos && endPos.x === x && endPos.y === y)) {
+                        cell.element.classList.add('start');
+                        startPos = { x, y };
+                    }
+                    break;
+                    
+                case 'end':
+                    // Clear previous end
+                    if (endPos) {
+                        const prevEnd = grid[endPos.y][endPos.x];
+                        prevEnd.element.classList.remove('end');
+                    }
+                    
+                    // Set new end (if not obstacle or start)
+                    if (!cell.isObstacle && !(startPos && startPos.x === x && startPos.y === y)) {
+                        cell.element.classList.add('end');
+                        endPos = { x, y };
+                    }
+                    break;
+                    
+                case 'obstacle':
+                    // Don't allow obstacles on start or end
+                    if ((startPos && startPos.x === x && startPos.y === y) || 
+                        (endPos && endPos.x === x && endPos.y === y)) {
+                        return;
+                    }
+                    
+                    cell.isObstacle = true;
+                    cell.element.classList.add('obstacle');
+                    break;
+                    
+                case 'clear':
+                    cell.isObstacle = false;
+                    cell.element.className = 'cell';
+                    
+                    // Check if we're clearing start or end
+                    if (startPos && startPos.x === x && startPos.y === y) {
+                        startPos = null;
+                    }
+                    if (endPos && endPos.x === x && endPos.y === y) {
+                        endPos = null;
+                    }
+                    break;
+            }
+        }
+        
+        // Clear path visualization
+        function clearPath() {
+            for (let y = 0; y < gridSize; y++) {
+                for (let x = 0; x < gridSize; x++) {
+                    const cell = grid[y][x];
+                    if (!cell.isObstacle) {
+                        cell.element.className = 'cell';
+                        if (startPos && startPos.x === x && startPos.y === y) {
+                            cell.element.classList.add('start');
+                        }
+                        if (endPos && endPos.x === x && endPos.y === y) {
+                            cell.element.classList.add('end');
+                        }
+                    }
+                }
+            }
+            resultDiv.textContent = '';
+        }
+        
+        // A* Pathfinding Algorithm
+        function findPath() {
+            if (!startPos || !endPos) {
+                resultDiv.textContent = 'Please set both start and end positions.';
+                return;
+            }
+            
+            clearPath();
+            
+            // Heuristic function (Manhattan distance)
+            function heuristic(a, b) {
+                return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+            }
+            
+            // Priority queue implementation
+            class PriorityQueue {
+                constructor() {
+                    this.elements = [];
+                }
+                
+                enqueue(element, priority) {
+                    this.elements.push({ element, priority });
+                    this.elements.sort((a, b) => a.priority - b.priority);
+                }
+                
+                dequeue() {
+                    return this.elements.shift().element;
+                }
+                
+                isEmpty() {
+                    return this.elements.length === 0;
+                }
+            }
+            
+            // Initialize data structures
+            const openSet = new PriorityQueue();
+            const cameFrom = {};
+            const gScore = {};
+            const fScore = {};
+            
+            // Initialize scores
+            for (let y = 0; y < gridSize; y++) {
+                for (let x = 0; x < gridSize; x++) {
+                    gScore[{x},{y}] = Infinity;
+                    fScore[{x},{y}] = Infinity;
+                }
+            }
+            
+            // Start node
+            const startKey = {startPos.x},{startPos.y};
+            gScore[startKey] = 0;
+            fScore[startKey] = heuristic(startPos, endPos);
+            openSet.enqueue(startPos, fScore[startKey]);
+            
+            // Possible movement directions (4-way movement)
+            const directions = [
+                { x: 0, y: -1 }, // up
+                { x: 1, y: 0 },  // right
+                { x: 0, y: 1 },  // down
+                { x: -1, y: 0 }  // left
+            ];
+            
+            let found = false;
+            
+            while (!openSet.isEmpty()) {
+                const current = openSet.dequeue();
+                const currentKey = {current.x},{current.y};
+                
+                // Check if we've reached the end
+                if (current.x === endPos.x && current.y === endPos.y) {
+                    found = true;
+                    break;
+                }
+                
+                // Mark as visited (unless it's the start or end)
+                if (!(current.x === startPos.x && current.y === startPos.y) && 
+                    !(current.x === endPos.x && current.y === endPos.y)) {
+                    grid[current.y][current.x].element.classList.add('visited');
+                }
+                
+                // Explore neighbors
+                for (const dir of directions) {
+                    const neighborX = current.x + dir.x;
+                    const neighborY = current.y + dir.y;
+                    
+                    // Check bounds
+                    if (neighborX < 0 || neighborX >= gridSize || 
+                        neighborY < 0 || neighborY >= gridSize) {
+                        continue;
+                    }
+                    
+                    // Check if it's an obstacle
+                    if (grid[neighborY][neighborX].isObstacle) {
+                        continue;
+                    }
+                    
+                    const neighborKey = {neighborX},{neighborY};
+                    const tentativeGScore = gScore[currentKey] + 1; // Assuming each step costs 1
+                    
+                    if (tentativeGScore < gScore[neighborKey]) {
+                        // This path to neighbor is better than any previous one
+                        cameFrom[neighborKey] = current;
+                        gScore[neighborKey] = tentativeGScore;
+                        fScore[neighborKey] = gScore[neighborKey] + heuristic({ x: neighborX, y: neighborY }, endPos);
+                        // Check if neighbor is already in open set
+                        let inOpenSet = false;
+                        for (const item of openSet.elements) {
+                            if (item.element.x === neighborX && item.element.y === neighborY) {
+                                inOpenSet = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!inOpenSet) {
+                            openSet.enqueue({ x: neighborX, y: neighborY }, fScore[neighborKey]);
+                        }
+                    }
+                }
+            }
+            
+            if (found) {
+                // Reconstruct path
+                const path = [];
+                let current = endPos;
+                const endKey = {endPos.x},{endPos.y};
+                
+                while (cameFrom[{current.x},{current.y}]) {
+                    path.push(current);
+                    current = cameFrom[{current.x},{current.y}];
+                }
+                path.reverse();
+                
+                // Visualize path
+                for (const node of path) {
+                    if (!(node.x === startPos.x && node.y === startPos.y) && 
+                        !(node.x === endPos.x && node.y === endPos.y)) {
+                        grid[node.y][node.x].element.classList.add('path');
+                    }
+                }
+                
+                resultDiv.textContent = Path found with {path.length} steps!;
+            } else {
+                resultDiv.textContent = 'No path exists between start and end.';
+            }
+        }
+    </script>
+</body>
+</html>
